@@ -1,0 +1,131 @@
+esphome:
+  name: "esphome-projector"
+  includes:
+    - uart_read_line_sensor.h
+  
+  # https://esphome.io/components/esphome.html#esphome-on-boot
+  # we don't know the power state of the projector right after the esp has booted
+  # so our first job is to ask the projector
+  # any changes in power state after this, the projector will broadcast automatically
+  on_boot:
+    # low priority means run late, we want to do this once everything is ready
+    priority: -100
+    then:
+      # wait an extra five seconds to make sure projector is ready to answer us
+      - delay: 5s
+      - logger.log: "querying projector state on esp startup:"
+      - uart.write: [0x7E, 0x30, 0x30, 0x31, 0x32, 0x34, 0x20, 0x31, 0x0D]
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+  # baud rate has to be set to zero to disable logging over uart
+  # if it's not, the projector will get our debug logs over serial and get very confused
+  baud_rate: 0
+
+# set up the pins we'll use to talk to the projector
+uart:
+  id: uart_bus
+  tx_pin: GPIO01
+  rx_pin: GPIO03
+  baud_rate: 9600
+
+api:
+
+ota:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Esphome-Web-93075C"
+    password: "hT19NZJxbEWQ"
+
+captive_portal:
+
+# create a global flag we can use when we've sent a command (turn on / turn off)
+# this may be used to ignore commands when one is queued already, this does not seem necessary in practice
+globals:
+- id: waiting_for_command_response
+  type: bool
+  restore_value: no
+  initial_value: 'false'
+
+text_sensor:
+# This sets up the custom sensor to read UART (required for switch status)
+- platform: custom
+  lambda: |-
+    auto my_custom_sensor = new UartReadLineSensor(id(uart_bus));
+    App.register_component(my_custom_sensor);
+    return {my_custom_sensor};
+  text_sensors:
+    id: "uart_readline"
+    internal: true
+    # most of the time, the projector will respond in upper case, but not always. 
+    # lets force upper case here to make our job easier
+    filters: 
+      - to_upper:
+    # we deal with anything the projector responds here instead of polling, seems more efficient
+    on_value:
+      then:
+        - lambda: |-
+            bool handled = false;
+
+            // if we are waiting for the projector to respond to a command.
+            // it will respond P (pass) or F (fail) before giving us the actual response to the command. 
+            if (x == "P" || x == "F") {
+              // now that the projector has responded to our command, we're ready to get the next message. 
+              // we return nothing here and parse that on the next time the lambda gets called
+
+              id(waiting_for_command_response) = false;
+              ESP_LOGD("projector", "command response received");
+              handled = true;
+            } 
+
+            // assuming any commands have been dealt with above, we listen for messages from the projector
+            // the OK-something messages are in response to status queries, sometimes these are in caps, sometimes not
+            // hence the toUpperCase call earlier
+            // the INFO messages come in automatically when the projector changes state
+
+            if (x == "OK1"   || // status query returned power on
+                x == "INFO1" ) { // warming up
+              id(projector_power).publish_state(true);
+              handled = true;
+            }
+            
+            if (x == "OK0"   || // status query returned power off
+                x == "INFO2" || // cooling down
+                x == "INFO0" ) {   // going into standby
+                id(projector_power).publish_state(false);
+                handled = true;
+            } 
+            
+            if (!handled) ESP_LOGD("projector", "unhandled message: %s", x.c_str());
+
+switch:
+  - platform: template
+    name: "Projector Power"
+    icon: "mdi:projector"
+    id: projector_power
+    optimistic: true
+
+    turn_on_action:
+      # first set the flag to denote we have a command response to wait for
+      - globals.set:
+          id: waiting_for_command_response
+          value: 'true'
+      # send the turn on command
+      - uart.write: [0x7E, 0x30, 0x30, 0x30, 0x30, 0x20, 0x31, 0x0D]       
+    
+    turn_off_action:
+      # first set the flag to denote we have a command response to wait for
+      - globals.set:
+          id: waiting_for_command_response
+          value: 'true'
+      # send the turn off command
+      - uart.write: [0x7E, 0x30, 0x30, 0x30, 0x30, 0x20, 0x30, 0x0D]
