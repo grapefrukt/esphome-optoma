@@ -1,8 +1,8 @@
 esphome:
   name: "esphome-projector"
   includes:
-    - uart_read_line_sensor.h
-  
+  - uart_read_line_sensor.h
+
   # https://esphome.io/components/esphome.html#esphome-on-boot
   # we don't know the power state of the projector right after the esp has booted
   # so our first job is to ask the projector
@@ -16,10 +16,8 @@ esphome:
       - logger.log: "querying projector state on esp startup:"
       - uart.write: [0x7E, 0x30, 0x30, 0x31, 0x32, 0x34, 0x20, 0x31, 0x0D]
 
-esp32:
-  board: esp32dev
-  framework:
-    type: arduino
+esp8266:
+  board: d1_mini
 
 logger:
   # baud rate has to be set to zero to disable logging over uart
@@ -43,8 +41,8 @@ wifi:
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
-    ssid: "Esphome-Web-93075C"
-    password: "hT19NZJxbEWQ"
+    ssid: "Esphome-Web-0Da5D2"
+    password: "4OtPQfYEgHve"
 
 captive_portal:
 
@@ -115,6 +113,7 @@ switch:
     optimistic: true
 
     turn_on_action:
+      - rtttl.play: 'three_up:d=4,o=5,b=100:16c5,16d5,16e5'
       # first set the flag to denote we have a command response to wait for
       - globals.set:
           id: waiting_for_command_response
@@ -123,9 +122,25 @@ switch:
       - uart.write: [0x7E, 0x30, 0x30, 0x30, 0x30, 0x20, 0x31, 0x0D]       
     
     turn_off_action:
+      - rtttl.play: 'three_up:d=4,o=5,b=100:16e5,16d5,16c5'
       # first set the flag to denote we have a command response to wait for
       - globals.set:
           id: waiting_for_command_response
           value: 'true'
       # send the turn off command
       - uart.write: [0x7E, 0x30, 0x30, 0x30, 0x30, 0x20, 0x30, 0x0D]
+  
+  - platform: gpio
+    pin: D2
+    name: "Projector Screen"
+    icon: "mdi:projector-screen"
+
+output:
+  - platform: esp8266_pwm
+    pin: D1
+    id: rtttl_out
+
+rtttl:
+  output: rtttl_out
+  on_finished_playback:
+    - logger.log: 'Song ended!'
