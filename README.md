@@ -10,7 +10,9 @@ The projector has an RS232 port on the back allowing for full control. We can us
 
 ### Bill of materials
  - ESP32 microcontroller (or similar)
- - [RS232 level shifter](https://www.sparkfun.com/products/449), I used one from SparkFun because it was readily available. Anything equivalent should work. 
+ - [RS232 level shifter](https://www.sparkfun.com/products/449), I used one from SparkFun because it was readily available. Anything equivalent should work.
+ - A passive piezo speaker (optional, used to play a chime when the projector starts)
+ - A 3.5mm phono jack (optional, used to trigger a projector screen)
 
 ### Connection
 Wire up the RX/TX, VCC and GND connections between the adapter and your microcontroller. You may need to swap RX/TX to make things work. 
@@ -24,6 +26,13 @@ Annoyingly the projector does not provide power out when off/standby, so a separ
  The [board type](https://github.com/grapefrukt/esphome-optoma/blob/main/esphome-projector.yaml#L20) may need to be adjusted as well. 
 
  - ⚠️ It is important to keep the `baud_rate: 0` setting on the logger. If removed, the log will be sent out via serial and this will confuse the projector mightily. 
+
+### Bonus features
+My particular model of projector has a very strange 12V trigger for the projector screen, it will turn on with the projector for a second or two, then turn off again and then finally switch on once the projector has booted fully. This means my screen won't be down in time for the projector has started. 
+
+My particular screen seems very happy to trigger on the ESP's 3.3v (and only draws .3ma) so I connected an output pin (D2) from the ESP directly to a 3.5mm jack to control the screen. I configured it as a separate toggle, but it can be run in sync with the projector if so desired. 
+
+Another issue I was having is that the projector is perfectly silent on startup, the only indication that it's starting is a blinking LED. I added a piezo element on pin D1 to play a little chime on startup/shutdown which makes it much easier to tell that things are happening. 
 
 ### Further notes
 This project is loosely based on a project by [rasclatt](https://github.com/rasclatt-dot-com/ESPHome-Optoma-Projector-Serial-To-MQTT-bridge), the primary improvement is that it no longer needs to continuously poll the projector for state information, but rather this is read out as the projector announces it. 
