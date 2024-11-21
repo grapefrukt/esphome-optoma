@@ -34,6 +34,7 @@ uart:
 api:
 
 ota:
+  - platform: esphome
 
 wifi:
   ssid: !secret wifi_ssid
@@ -50,6 +51,10 @@ captive_portal:
 # this may be used to ignore commands when one is queued already, this does not seem necessary in practice
 globals:
 - id: waiting_for_command_response
+  type: bool
+  restore_value: no
+  initial_value: 'false'
+- id: first_response_received
   type: bool
   restore_value: no
   initial_value: 'false'
@@ -113,19 +118,35 @@ switch:
     optimistic: true
 
     turn_on_action:
-      - rtttl.play: 'three_up:d=4,o=5,b=100:16c5,16d5,16e5'
+      - if:
+          condition:
+            lambda: |-
+              return id(first_response_received);
+          then:
+            - rtttl.play: 'three_up:d=4,o=5,b=100:16c5,16d5,16e5'
       # first set the flag to denote we have a command response to wait for
       - globals.set:
           id: waiting_for_command_response
+          value: 'true'
+      - globals.set:
+          id: first_response_received
           value: 'true'
       # send the turn on command
       - uart.write: [0x7E, 0x30, 0x30, 0x30, 0x30, 0x20, 0x31, 0x0D]       
     
     turn_off_action:
-      - rtttl.play: 'three_up:d=4,o=5,b=100:16e5,16d5,16c5'
+      - if:
+          condition:
+            lambda: |-
+                return id(first_response_received);
+          then:
+            - rtttl.play: 'three_up:d=4,o=5,b=100:16e5,16d5,16c5'
       # first set the flag to denote we have a command response to wait for
       - globals.set:
           id: waiting_for_command_response
+          value: 'true'
+      - globals.set:
+          id: first_response_received
           value: 'true'
       # send the turn off command
       - uart.write: [0x7E, 0x30, 0x30, 0x30, 0x30, 0x20, 0x30, 0x0D]
